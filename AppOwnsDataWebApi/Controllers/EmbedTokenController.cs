@@ -1,32 +1,41 @@
-﻿using System.Threading.Tasks;
-using Microsoft.AspNetCore.Authorization;
+﻿using System;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Identity.Web.Resource;
-using Microsoft.AspNetCore.Cors;
 using AppOwnsDataWebApi.Models;
 using AppOwnsDataWebApi.Services;
 
-namespace AppOwnsDataWebApi.Controllers {
+namespace AppOwnsDataWebApi.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class EmbedTokenController : ControllerBase
+    {
+        private readonly PowerBiServiceApi _powerBiServiceApi;
 
-  [ApiController]
-  [Route("api/[controller]")]
-  [Authorize]
-  [RequiredScope("Reports.Embed")]
-  [EnableCors("AllowOrigin")]
-  public class EmbedTokenController : ControllerBase {
+        public EmbedTokenController(PowerBiServiceApi powerBiServiceApi)
+        {
+            _powerBiServiceApi = powerBiServiceApi;
+        }
 
-    private PowerBiServiceApi powerBiServiceApi;
+        // GET api/EmbedToken?workspaceId={workspaceId}&reportId={reportId}
+        [HttpGet]
+        public async Task<IActionResult> Get([FromQuery] string workspaceId, [FromQuery] string reportId)
+        {
+            if (string.IsNullOrWhiteSpace(workspaceId) || string.IsNullOrWhiteSpace(reportId))
+            {
+                return BadRequest("workspaceId and reportId are required.");
+            }
 
-    public EmbedTokenController(PowerBiServiceApi powerBiServiceApi) {
-      this.powerBiServiceApi = powerBiServiceApi;
+            try
+            {
+                var result = await _powerBiServiceApi.GetEmbedToken(workspaceId, reportId);
+                return Ok(result);
+            }
+            catch (Exception ex)
+            {
+                // return 500 with message (you can add better logging)
+                return StatusCode(500, ex.Message);
+            }
+        }
     }
-
-    [HttpGet]
-    public async Task<EmbedTokenResult> Get() {
-      string user = this.User.FindFirst("preferred_username").Value;
-      return await this.powerBiServiceApi.GetEmbedToken(user);
-    }
-
-  }
-
 }

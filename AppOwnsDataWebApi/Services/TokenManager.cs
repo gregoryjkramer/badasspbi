@@ -1,57 +1,64 @@
 ﻿using System;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Text.Json;
+using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Client;
 
-namespace AppOwnsDataWebApi.Services {
+namespace AppOwnsDataWebApi.Services
+{
+    public class TokenManager
+    {
+        private string TenantId { get; }
+        private string ClientId { get; }
+        private string CertificateThumbprint { get; }
 
-  public class TokenManager {
+        private static string CachedToken { get; set; }
+        private static DateTime CachedTokenExpires { get; set; }
 
-    private string TenantId { get; }
-    private string ClientId { get; }
-    private string ClientSecret { get; }
-    private string[] PowerBiScopes { get; }
+        public TokenManager(IConfiguration configuration)
+        {
+            TenantId = configuration["ServicePrincipalApp:TenantId"];
+            ClientId = configuration["ServicePrincipalApp:ClientId"];
+            CertificateThumbprint = configuration["ServicePrincipalApp:CertificateThumbprint"];
+        }
 
-    private static string CachedToken { get; set; }
-    private static DateTime CachedTokenExpires { get; set; }
-    private int embedTokenLifetime { get; set; }
+        public string GetAccessToken()
+        {
+            if (string.IsNullOrEmpty(CachedToken) || DateTime.UtcNow > CachedTokenExpires)
+                RefreshAccessToken();
 
-    public TokenManager(IConfiguration configuration) {
-      this.TenantId = configuration["ServicePrincipalApp:TenantId"];
-      this.ClientId = configuration["ServicePrincipalApp:ClientId"];
-      this.ClientSecret = configuration["ServicePrincipalApp:ClientSecret"];
-      this.embedTokenLifetime = int.Parse(configuration["PowerBi:EmbedTokenLifetime"]);
-      this.PowerBiScopes = new string[] { "https://analysis.windows.net/powerbi/api/.default" };
+            return CachedToken;
+        }
+
+        private void RefreshAccessToken()
+        {
+            X509Certificate2 cert = LoadCertificateByThumbprint(CertificateThumbprint);
+
+            IConfidentialClientApplication app =
+                ConfidentialClientApplicationBuilder.Create(ClientId)
+                .WithCertificate(cert)
+                .WithAuthority($"https://login.microsoftonline.com/{TenantId}")
+                .Build();
+
+            var token = app.AcquireTokenForClient(new[] { "https://analysis.windows.net/powerbi/api/.default" })
+                           .ExecuteAsync().Result;
+
+            CachedToken = token.AccessToken;
+            CachedTokenExpires = token.ExpiresOn.DateTime.AddMinutes(-5);
+        }
+
+        private X509Certificate2 LoadCertificateByThumbprint(string thumbprint)
+        {
+            using X509Store store = new X509Store(StoreName.My, StoreLocation.CurrentUser);
+            store.Open(OpenFlags.ReadOnly);
+
+            foreach (var cert in store.Certificates)
+            {
+                if (cert.Thumbprint != null &&
+                    cert.Thumbprint.Equals(thumbprint, StringComparison.OrdinalIgnoreCase))
+                    return cert;
+            }
+
+            throw new Exception($"Certificate with thumbprint {thumbprint} not found.");
+        }
     }
-
-    public string getAccessToken() {
-
-      Boolean noToken = string.IsNullOrEmpty(CachedToken);
-      Boolean tokenExpired = (DateTime.UtcNow > CachedTokenExpires);
-
-      if ( noToken || tokenExpired ) {
-        refreshAccessToken();
-      }
-
-      return CachedToken;
-    }
-
-    public void refreshAccessToken() {
-
-      var app = ConfidentialClientApplicationBuilder.Create(this.ClientId)
-        .WithTenantId(this.TenantId)
-        .WithClientSecret(this.ClientSecret)
-        .Build();
-
-      var accessTokenRequest = app.AcquireTokenForClient(this.PowerBiScopes).ExecuteAsync().Result; ;
-
-      CachedToken = accessTokenRequest.AccessToken;
-      int MinimumTokenLifetime = embedTokenLifetime * 60; // minutes * seconds
-      CachedTokenExpires = accessTokenRequest.ExpiresOn.DateTime.AddSeconds(-MinimumTokenLifetime);
-    }
-   
-  }
-
 }

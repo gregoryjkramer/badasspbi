@@ -1,5 +1,10 @@
 # The App-Owns-Data Starter Kit
 
+> **Status**
+> This configuration is the known-good baseline.
+> If this renders locally, the system is healthy.
+> All future work should build forward from this state.
+
 The  **App-Owns-Data Starter Kit** is a developer sample built using the
 .NET 6 SDK to provide guidance for organizations and ISVs who are using
 App-Owns-Data embedding with Power BI in a multi-tenant environment.

@@ -1,17 +1,7 @@
 {
-    "compilerOptions": {
-      "jsx": "react-jsx",
-      "module": "commonjs",
-      "noImplicitAny": true,
-      "noImplicitThis": true,
-      "outDir": "wwwroot/js",
-      "preserveConstEnums": true,
-      "removeComments": true,
-      "sourceMap": true,
-      "target": "es5",
-      "esModuleInterop": true
-    },
-    "include": [
-      "App/index.tsx"
-    ]
-  }
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}

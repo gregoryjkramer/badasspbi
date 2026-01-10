@@ -30,13 +30,18 @@ namespace AppOwnsDataWebApi.Models {
     public bool userCanCreate { get; set; }
   }
 
-  public class EmbedTokenResult{
-    public string embedToken { get; set; }
-    public string embedTokenId { get; set; }
-    public DateTime embedTokenExpiration { get; set; }
-  }
+    public class EmbedTokenResult
+    {
+        public string embedToken { get; set; }
+        public string embedTokenId { get; set; }
+        public DateTime embedTokenExpiration { get; set; }
 
-  public class ExportFileRequestParams {
+        public string embedUrl { get; set; }   // <-- YOU MUST ADD THIS
+        public string reportId { get; set; }   // <-- AND THIS
+    }
+
+
+    public class ExportFileRequestParams {
     public string ReportId { get; set; }
     public string ExportType { get; set; }
     public string Filter { get; set; }

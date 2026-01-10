@@ -2,268 +2,129 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Identity.Web;
 using Microsoft.Rest;
 using Microsoft.PowerBI.Api;
 using Microsoft.PowerBI.Api.Models;
-using AppOwnsDataModels = AppOwnsDataShared.Models;
 using AppOwnsDataWebApi.Models;
-using AppOwnsDataShared.Services;
 
-namespace AppOwnsDataWebApi.Services {
+namespace AppOwnsDataWebApi.Services
+{
+    public class PowerBiServiceApi
+    {
+        private readonly TokenManager tokenManager;
+        private readonly string urlPowerBiServiceApiRoot;
 
-  public class PowerBiServiceApi {
+        private readonly Guid workspaceId;
+        private readonly Guid reportId;
+        private readonly string datasetId;
 
-    private TokenManager tokenManager { get; }
-    private string urlPowerBiServiceApiRoot { get; }
-    private readonly AppOwnsDataDBService appOwnsDataDBService;
+        private readonly int embedTokenLifetime;
 
-    private int embedTokenLifetime { get; set; }
-    private string accessToken { get; set; }
-    private PowerBIClient pbiClient { get; set; }
+        private PowerBIClient pbiClient;
 
-    public PowerBiServiceApi(IConfiguration configuration, TokenManager tokenManager, AppOwnsDataDBService appOwnsDataDBService) {
-      this.urlPowerBiServiceApiRoot = configuration["PowerBi:ServiceRootUrl"];
-      this.embedTokenLifetime = int.Parse(configuration["PowerBi:EmbedTokenLifetime"]);
-      this.tokenManager = tokenManager;
-      this.appOwnsDataDBService = appOwnsDataDBService;
-      this.accessToken = this.tokenManager.getAccessToken();
-      this.pbiClient = GetPowerBiClient();
-    }
+        public PowerBiServiceApi(IConfiguration configuration, TokenManager tokenManager)
+        {
+            this.tokenManager = tokenManager;
 
-    public PowerBIClient GetPowerBiClient() {
-      var tokenCredentials = new TokenCredentials(this.accessToken, "Bearer");
-      return new PowerBIClient(new Uri(urlPowerBiServiceApiRoot), tokenCredentials);
-    }
+            urlPowerBiServiceApiRoot = configuration["PowerBi:ServiceRootUrl"];
+            embedTokenLifetime = int.Parse(configuration["PowerBi:EmbedTokenLifetime"]);
 
-    private PowerBIClient GetPowerBiClientForProfile(Guid ProfileId) {
-      var tokenCredentials = new TokenCredentials(this.accessToken, "Bearer");
-      return new PowerBIClient(new Uri(urlPowerBiServiceApiRoot), tokenCredentials, ProfileId);
-    }
+            // Backward compatibility
+            workspaceId = Guid.Parse(configuration["Workspaces:0:WorkspaceId"]);
+            reportId = Guid.Parse(configuration["Workspaces:0:ReportId"]);
+            datasetId = configuration["Workspaces:0:DatasetId"];
 
-    private void SetCallingContext(string ProfileId = "") {
-
-      if (ProfileId.Equals("")) {
-        pbiClient = GetPowerBiClient();
-      }
-      else {
-        pbiClient = GetPowerBiClientForProfile(new Guid(ProfileId));
-      }
-
-    }
-
-    public async Task<EmbeddedViewModel> GetEmbeddedViewModel(string user) {
-
-      AppOwnsDataModels.User currentUser = this.appOwnsDataDBService.GetUser(user);
-
-      if (currentUser.TenantName == null || currentUser.TenantName == "") {
-        return new EmbeddedViewModel { tenantName = "" };
-      }
-
-      AppOwnsDataModels.PowerBiTenant currentTenant = appOwnsDataDBService.GetTenant(currentUser.TenantName);
-
-      SetCallingContext(currentTenant.ProfileId);
-
-      Guid workspaceId = new Guid(currentTenant.WorkspaceId);
-
-      var datasets = (await pbiClient.Datasets.GetDatasetsInGroupAsync(workspaceId)).Value;
-      var embeddedDatasets = new List<EmbeddedDataset>();
-      foreach (var dataset in datasets) {
-        embeddedDatasets.Add(new EmbeddedDataset {
-          id = dataset.Id,
-          name = dataset.Name,
-          createReportEmbedURL = dataset.CreateReportEmbedURL
-        });
-      }
-
-      var reports = (await pbiClient.Reports.GetReportsInGroupAsync(workspaceId)).Value;
-      var embeddedReports = new List<EmbeddedReport>();
-      foreach (var report in reports) {
-        embeddedReports.Add(new EmbeddedReport {
-          id = report.Id.ToString(),
-          name = report.Name,
-          embedUrl = report.EmbedUrl,
-          datasetId = report.DatasetId,
-          reportType = report.ReportType
-        });
-      }
-
-      IList<GenerateTokenRequestV2Dataset> datasetRequests = new List<GenerateTokenRequestV2Dataset>();
-      IList<string> datasetIds = new List<string>();
-
-      foreach (var dataset in datasets) {
-        datasetRequests.Add(new GenerateTokenRequestV2Dataset(dataset.Id, xmlaPermissions: XmlaPermissions.ReadOnly));
-        datasetIds.Add(dataset.Id);
-      };
-
-      IList<GenerateTokenRequestV2Report> reportRequests = new List<GenerateTokenRequestV2Report>();
-      foreach (var report in reports) {
-        Boolean userCanEdit = currentUser.CanEdit && report.ReportType.Equals("PowerBIReport");
-        reportRequests.Add(new GenerateTokenRequestV2Report(report.Id, allowEdit: userCanEdit));
-      };
-
-      var workspaceRequests = new List<GenerateTokenRequestV2TargetWorkspace>();
-      if (currentUser.CanCreate) {
-        workspaceRequests.Add(new GenerateTokenRequestV2TargetWorkspace(workspaceId));
-      }
-
-      GenerateTokenRequestV2 tokenRequest =
-        new GenerateTokenRequestV2 {
-          Datasets = datasetRequests,
-          Reports = reportRequests,
-          TargetWorkspaces = workspaceRequests,
-          LifetimeInMinutes = embedTokenLifetime
-        };
-
-      // call to Power BI Service API and pass GenerateTokenRequest object to generate embed token
-      var EmbedTokenResult = pbiClient.EmbedToken.GenerateToken(tokenRequest);
-
-      return new EmbeddedViewModel {
-        tenantName = currentUser.TenantName,
-        reports = embeddedReports,
-        datasets = embeddedDatasets,
-        embedToken = EmbedTokenResult.Token,
-        embedTokenId = EmbedTokenResult.TokenId.ToString(),
-        embedTokenExpiration = EmbedTokenResult.Expiration,
-        user = currentUser.LoginId,
-        userCanEdit = currentUser.CanEdit,
-        userCanCreate = currentUser.CanCreate
-      };
-
-    }
-
-    public async Task<EmbedTokenResult> GetEmbedToken(string user) {
-
-      AppOwnsDataModels.User currentUser = this.appOwnsDataDBService.GetUser(user);
-
-      if (currentUser.TenantName == null || currentUser.TenantName == "") {
-        throw new ApplicationException("User not assigned to tenant");
-      }
-
-      AppOwnsDataModels.PowerBiTenant currentTenant = appOwnsDataDBService.GetTenant(currentUser.TenantName);
-
-      Guid workspaceId = new Guid(currentTenant.WorkspaceId);
-
-      SetCallingContext(currentTenant.ProfileId);
-
-      var reports = (await pbiClient.Reports.GetReportsInGroupAsync(workspaceId)).Value;
-      var datasets = (await pbiClient.Datasets.GetDatasetsInGroupAsync(workspaceId)).Value;
-
-      IList<GenerateTokenRequestV2Dataset> datasetRequests = new List<GenerateTokenRequestV2Dataset>();
-      foreach (var dataset in datasets) {
-        datasetRequests.Add(new GenerateTokenRequestV2Dataset(dataset.Id, xmlaPermissions: XmlaPermissions.ReadOnly));
-      };
-
-      IList<GenerateTokenRequestV2Report> reportRequests = new List<GenerateTokenRequestV2Report>();
-      foreach (var report in reports) {
-        Boolean userCanEdit = currentUser.CanEdit && report.ReportType.Equals("PowerBIReport");
-        reportRequests.Add(new GenerateTokenRequestV2Report(report.Id, allowEdit: userCanEdit));
-      };
-
-      var workspaceRequests = new List<GenerateTokenRequestV2TargetWorkspace>();
-      if (currentUser.CanCreate) {
-        workspaceRequests.Add(new GenerateTokenRequestV2TargetWorkspace(workspaceId));
-      }
-
-      GenerateTokenRequestV2 tokenRequest =
-        new GenerateTokenRequestV2 {
-          Datasets = datasetRequests,
-          Reports = reportRequests,
-          TargetWorkspaces = workspaceRequests,
-          LifetimeInMinutes = embedTokenLifetime
-        };
-
-      var tokenResult = pbiClient.EmbedToken.GenerateToken(tokenRequest);
-
-      // call to Power BI Service API and pass GenerateTokenRequest object to generate embed token
-      return new EmbedTokenResult {
-        embedToken = tokenResult.Token,
-        embedTokenId = tokenResult.TokenId.ToString(),
-        embedTokenExpiration = tokenResult.Expiration
-      };
-
-    }
-
-    public async Task<ExportedReport> ExportFile(string user, ExportFileRequestParams request) {
-
-      AppOwnsDataModels.User currentUser = this.appOwnsDataDBService.GetUser(user);
-
-      if (currentUser.TenantName == null || currentUser.TenantName == "") {
-        throw new ApplicationException("User not assigned to tenant");
-      }
-
-      AppOwnsDataModels.PowerBiTenant currentTenant = appOwnsDataDBService.GetTenant(currentUser.TenantName);
-
-      Guid workspaceId = new Guid(currentTenant.WorkspaceId);
-      Guid reportId = new Guid(request.ReportId);
-
-      FileFormat fileFormat;
-      switch (request.ExportType.ToLower()) {
-        case "pdf":
-          fileFormat = FileFormat.PDF;
-          break;
-        case "pptx":
-          fileFormat = FileFormat.PPTX;
-          break;
-        case "png":
-          fileFormat = FileFormat.PNG;
-          break;
-        default:
-          throw new ApplicationException("Power BI reports do not support exort to " + request.ExportType);
-      }
-
-      SetCallingContext(currentTenant.ProfileId);
-
-      var exportRequest = new ExportReportRequest {
-        Format = fileFormat,
-        PowerBIReportConfiguration = new PowerBIReportExportConfiguration()
-      };
-
-      if (!string.IsNullOrEmpty(request.Filter)) {
-        string[] filters = request.Filter.Split(";");
-        exportRequest.PowerBIReportConfiguration.ReportLevelFilters = new List<ExportFilter>();
-        foreach (string filter in filters) {
-          exportRequest.PowerBIReportConfiguration.ReportLevelFilters.Add(new ExportFilter(filter));
+            pbiClient = CreatePowerBiClient();
         }
-      }
 
-      if (!string.IsNullOrEmpty(request.BookmarkState)) {
-        exportRequest.PowerBIReportConfiguration.DefaultBookmark = new PageBookmark { State = request.BookmarkState };
-      }
-
-      if (!string.IsNullOrEmpty(request.PageName)) {
-        exportRequest.PowerBIReportConfiguration.Pages = new List<ExportReportPage>(){
-          new ExportReportPage{PageName = request.PageName}
-        };
-        if (!string.IsNullOrEmpty(request.VisualName)) {
-          exportRequest.PowerBIReportConfiguration.Pages[0].VisualName = request.VisualName;
+        private PowerBIClient CreatePowerBiClient()
+        {
+            string accessToken = tokenManager.GetAccessToken();
+            var tokenCredentials = new TokenCredentials(accessToken, "Bearer");
+            return new PowerBIClient(new Uri(urlPowerBiServiceApiRoot), tokenCredentials);
         }
-      }
 
-      Export export = await pbiClient.Reports.ExportToFileInGroupAsync(workspaceId, reportId, exportRequest);
+        private void RefreshClient()
+        {
+            pbiClient = CreatePowerBiClient();
+        }
 
-      string exportId = export.Id;
+        /// <summary>
+        /// Parameterless method (backward compatible)
+        /// </summary>
+        public async Task<EmbedTokenResult> GetEmbedToken()
+        {
+            RefreshClient();
 
-      do {
-        System.Threading.Thread.Sleep(3000);
-        export = pbiClient.Reports.GetExportToFileStatusInGroup(workspaceId, reportId, exportId);
-      } while (export.Status != ExportState.Succeeded && export.Status != ExportState.Failed);
+            var report = await pbiClient.Reports.GetReportInGroupAsync(workspaceId, reportId);
+            if (report == null)
+            {
+                throw new ApplicationException($"Report {reportId} not found in workspace {workspaceId}.");
+            }
 
-      if (export.Status == ExportState.Failed) {
-        Console.WriteLine("Export failed!");
-      }
+            var tokenRequest = new GenerateTokenRequest(
+                accessLevel: TokenAccessLevel.View,
+                datasetId: report.DatasetId
+            );
 
-      if (export.Status == ExportState.Succeeded) {
-        return new ExportedReport {
-          ReportName = export.ReportName,
-          ResourceFileExtension = export.ResourceFileExtension,
-          ReportStream = pbiClient.Reports.GetFileOfExportToFileInGroup(workspaceId, reportId, exportId)
-        };
-      }
-      else {
-        return null;
-      }
+            var tokenResponse = await pbiClient.Reports.GenerateTokenAsync(
+                workspaceId,
+                reportId,
+                tokenRequest
+            );
+
+            return new EmbedTokenResult
+            {
+                embedToken = tokenResponse.Token,
+                embedTokenId = tokenResponse.TokenId.ToString(),
+                embedTokenExpiration = tokenResponse.Expiration,
+                embedUrl = report.EmbedUrl,
+                reportId = report.Id.ToString()
+            };
+        }
+
+        /// <summary>
+        /// Dynamic method (this is the one the React client uses)
+        /// </summary>
+        public async Task<EmbedTokenResult> GetEmbedToken(string workspaceIdStr, string reportIdStr)
+        {
+            RefreshClient();
+
+            var workspaceGuid = Guid.Parse(workspaceIdStr);
+            var reportGuid = Guid.Parse(reportIdStr);
+
+            // 1. Retrieve the report metadata
+            var report = await pbiClient.Reports.GetReportInGroupAsync(workspaceGuid, reportGuid);
+            if (report == null)
+            {
+                throw new ApplicationException($"Report {reportIdStr} not found in workspace {workspaceIdStr}.");
+            }
+
+            // 2. Extract dataset id
+            string datasetId = report.DatasetId;
+
+            // 3. Build a simple embed token request (V1 is more stable)
+            var tokenRequest = new GenerateTokenRequest(
+                accessLevel: TokenAccessLevel.View,
+                datasetId: datasetId
+            );
+
+            // 4. Generate embed token
+            var tokenResponse = await pbiClient.Reports.GenerateTokenAsync(
+                workspaceGuid,
+                reportGuid,
+                tokenRequest
+            );
+
+            // 5. Return everything the SPA needs
+            return new EmbedTokenResult
+            {
+                embedToken = tokenResponse.Token,
+                embedTokenId = tokenResponse.TokenId.ToString(),
+                embedTokenExpiration = tokenResponse.Expiration,
+                embedUrl = report.EmbedUrl,
+                reportId = report.Id.ToString()
+            };
+        }
     }
-
-  }
 }
