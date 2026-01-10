@@ -11,8 +11,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AppOwnsDataWebApi", "AppOwn
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AppOwnsDataClient", "AppOwnsDataClient\AppOwnsDataClient.csproj", "{33F71F9E-157A-4FF5-83F1-3F0506CB7FE8}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AppOwnsDataReactClient", "AppOwnsDataReactClient\AppOwnsDataReactClient.csproj", "{2432A267-62B2-4471-8577-F90871B3C5E1}"
-EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -35,10 +33,6 @@ Global
 		{33F71F9E-157A-4FF5-83F1-3F0506CB7FE8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{33F71F9E-157A-4FF5-83F1-3F0506CB7FE8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{33F71F9E-157A-4FF5-83F1-3F0506CB7FE8}.Release|Any CPU.Build.0 = Release|Any CPU
-		{2432A267-62B2-4471-8577-F90871B3C5E1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{2432A267-62B2-4471-8577-F90871B3C5E1}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{2432A267-62B2-4471-8577-F90871B3C5E1}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{2432A267-62B2-4471-8577-F90871B3C5E1}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
