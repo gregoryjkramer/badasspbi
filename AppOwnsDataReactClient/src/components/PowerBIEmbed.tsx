@@ -1,19 +1,22 @@
 import React, { useEffect, useRef, useState } from "react";
 import * as powerbi from "powerbi-client";
 import axios from "axios";
-import { useMsal } from "@azure/msal-react";
 import Box from "@mui/material/Box";
 import CircularProgress from "@mui/material/CircularProgress";
 import Paper from "@mui/material/Paper";
 import Typography from "@mui/material/Typography";
-import { PowerBiLoginRequest } from "../AuthConfig";
+
+console.log('🔍 ENV CHECK:', {
+  api: import.meta.env.VITE_API_BASE_URL,
+  workspace: import.meta.env.VITE_PBI_WORKSPACE_ID,
+  report: import.meta.env.VITE_PBI_REPORT_ID
+});
 
 const DEFAULT_WORKSPACE_ID = "3405b65d-7455-4ad5-ba0f-5db626cd8f3b";
 const DEFAULT_REPORT_ID = "67d62ff9-7478-47dd-812a-a5ac24a1166f";
 
 const PowerBIEmbed: React.FC = () => {
     const reportRef = useRef<HTMLDivElement | null>(null);
-    const { instance, accounts } = useMsal();
     const [isLoading, setIsLoading] = useState(true);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -23,30 +26,20 @@ const PowerBIEmbed: React.FC = () => {
                 setIsLoading(true);
                 setErrorMessage(null);
 
-                const account = accounts[0];
-                if (!account) {
-                    setIsLoading(false);
-                    return;
-                }
-
-                const tokenResponse = await instance.acquireTokenSilent({
-                    ...PowerBiLoginRequest,
-                    account,
-                });
-
                 const apiUrl = import.meta.env.VITE_API_BASE_URL ?? "https://localhost:5001";
                 const workspaceId = import.meta.env.VITE_PBI_WORKSPACE_ID ?? DEFAULT_WORKSPACE_ID;
                 const targetReportId = import.meta.env.VITE_PBI_REPORT_ID ?? DEFAULT_REPORT_ID;
+
+                console.log('📞 Calling API:', `${apiUrl}/api/EmbedToken`);
 
                 const response = await axios.get(`${apiUrl}/api/EmbedToken`, {
                     params: {
                         workspaceId,
                         reportId: targetReportId,
                     },
-                    headers: {
-                        Authorization: `Bearer ${tokenResponse.accessToken}`,
-                    },
                 });
+
+                console.log('✅ API Response:', response.data);
 
                 const { embedToken, reportId, embedUrl } = response.data;
 
@@ -79,7 +72,10 @@ const PowerBIEmbed: React.FC = () => {
                 }
 
             } catch (err) {
-                console.error("Error loading Power BI report", err);
+                console.error("❌ Error loading Power BI report", err);
+                if (axios.isAxiosError(err)) {
+                    console.error("API Error details:", err.response?.data);
+                }
                 setErrorMessage("Unable to load the report. Check the API and workspace settings.");
             } finally {
                 setIsLoading(false);
@@ -87,7 +83,7 @@ const PowerBIEmbed: React.FC = () => {
         };
 
         loadReport();
-    }, [instance, accounts]);
+    }, []);
 
     return (
         <Box>

@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import PowerBIEmbed from "./components/PowerBIEmbed";
 
 import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
@@ -29,10 +30,8 @@ const router = createBrowserRouter(
     { basename }
 );
 
-ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
-    <React.StrictMode>
-        <MsalProvider instance={pca}>
-            <RouterProvider router={router} />
-        </MsalProvider>
-    </React.StrictMode>
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <PowerBIEmbed />
+  </React.StrictMode>
 );
